@@ -9,7 +9,7 @@ import Social from './components/Social';
 import './styles/App.css';
 
 function AppContent() {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, profile, loading, logout } = useAuth();
   const [currentView, setCurrentView] = useState('marketplace');
   const [showListModal, setShowListModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -69,9 +69,17 @@ function AppContent() {
             <button className="btn-primary" onClick={() => setShowListModal(true)}>
               List Item
             </button>
-            <button className="btn-secondary" onClick={signOut}>
+                      {user && (
+                        <button
+                          className="btn-secondary"
+                              onClick={logout}>
+                            Logout
+                        </button>
+                  )}
+
+            {/* <button className="btn-secondary" onClick={signOut}>
               Logout
-            </button>
+            </button> */}
           </div>
         </div>
       </nav>

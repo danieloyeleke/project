@@ -19,12 +19,18 @@ export default function Auth() {
 
     try {
       if (isLogin) {
-        await signIn(email, password);
+        const result = await signIn(email, password);
+        if (!result?.success) {
+          setError(result?.error || "Login failed");
+        }
       } else {
         if (!username || !location) {
           throw new Error('Please fill in all fields');
         }
-        await signUp(email, password, username, fullName, location);
+        const result = await signUp(email, password, username, fullName, location);
+        if (!result?.success) {
+          setError(result?.error || "Registration failed");
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -79,6 +85,7 @@ export default function Auth() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Your full name"
+                  required
                 />
               </div>
 
@@ -129,10 +136,66 @@ export default function Auth() {
 
         {!isLogin && (
           <div className="signup-bonus">
-            New members start with 100 karma points!
+            New members start with 25 karma points!
           </div>
         )}
       </div>
     </div>
   );
 }
+
+
+// import { useContext, useState } from "react";
+// import { AuthContext } from "../contexts/AuthContext";
+// import { useNavigate } from "react-router-dom";
+
+// const Auth = () => {
+//   const { login } = useContext(AuthContext);
+//   const navigate = useNavigate();
+
+//   const [email, setEmail] = useState("");
+//   const [password, setPassword] = useState("");
+//   const [error, setError] = useState("");
+
+//   const handleSubmit = async (e) => {
+//     e.preventDefault();
+
+//     const success = await login(email, password);
+
+//     if (success) {
+//       navigate("/dashboard");
+//     } else {
+//       setError("Invalid email or password");
+//     }
+//   };
+
+//   return (
+//     <div className="auth-container">
+//       <h2>Login</h2>
+
+//       {error && <p style={{ color: "red" }}>{error}</p>}
+
+//       <form onSubmit={handleSubmit}>
+//         <input
+//           type="email"
+//           placeholder="Email"
+//           value={email}
+//           onChange={(e) => setEmail(e.target.value)}
+//           required
+//         />
+
+//         <input
+//           type="password"
+//           placeholder="Password"
+//           value={password}
+//           onChange={(e) => setPassword(e.target.value)}
+//           required
+//         />
+
+//         <button type="submit">Login</button>
+//       </form>
+//     </div>
+//   );
+// };
+
+// export default Auth;
