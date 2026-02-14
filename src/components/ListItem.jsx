@@ -20,7 +20,7 @@ const CONDITIONS = [
   { value: "good", label: "Good", karma: 50 },
   { value: "fair", label: "Fair", karma: 25 },
 ];
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 10MB
 
 export default function ListItem({ onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -35,14 +35,17 @@ export default function ListItem({ onClose, onSuccess }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isImageTooLarge, setIsImageTooLarge] = useState(false);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file && file.size > MAX_FILE_SIZE) {
+      setIsImageTooLarge(true);
       setError("Image must be 2MB or smaller");
       return;
     }
+    setIsImageTooLarge(false);
     setError("");
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
@@ -151,7 +154,7 @@ export default function ListItem({ onClose, onSuccess }) {
 
           {error && <div className="error-message">{error}</div>}
 
-          <button className="btn-primary" disabled={loading}>
+          <button className="btn-primary" disabled={loading || isImageTooLarge}>
             {loading ? "Listing..." : "List Item"}
           </button>
         </form>
