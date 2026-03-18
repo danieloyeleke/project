@@ -4,13 +4,21 @@ const api = axios.create({
   baseURL: "http://localhost:8080/api",
 });
 
+const normalizeToken = (value) => {
+  if (!value || typeof value !== "string") return "";
+  return value.replace(/^Bearer\s+/i, "").trim();
+};
+
 //attach token automatically
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token");
+    const storedToken = localStorage.getItem("token");
+    const token = normalizeToken(storedToken);
 
-    if (token) {
+    if (token && token !== "undefined" && token !== "null") {
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      delete config.headers.Authorization;
     }
 
     return config;

@@ -1,41 +1,47 @@
 import React, { useState, useEffect } from 'react';
-
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function Social() {
   const { user, profile } = useAuth();
+  const currentUserId = user?.id ?? user?.userId ?? user?.user_id ?? null;
+  const karmaBalance = profile?.karma_balance ?? profile?.karmaBalance ?? 0;
   const [following, setFollowing] = useState([]);
   const [followers, setFollowers] = useState([]);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [friendsItems, setFriendsItems] = useState([]);
   const [activeTab, setActiveTab] = useState('feed');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [giftModal, setGiftModal] = useState(null);
   const [giftAmount, setGiftAmount] = useState('');
   const [giftMessage, setGiftMessage] = useState('');
 
   useEffect(() => {
-    if (user) {
+    if (user && currentUserId) {
       fetchSocialData();
+    } else {
+      setLoading(false);
     }
-  }, [user]);
+  }, [user, currentUserId]);
 
   const fetchSocialData = async () => {
     setLoading(true);
+    setError('');
     try {
       const [followingResult, followersResult, usersResult] = await Promise.all([
         supabase
           .from('follows')
           .select('*, following:profiles!follows_following_id_fkey(id, username, location, karma_balance)')
-          .eq('follower_id', user.id),
+          .eq('follower_id', currentUserId),
         supabase
           .from('follows')
           .select('*, follower:profiles!follows_follower_id_fkey(id, username, location, karma_balance)')
-          .eq('following_id', user.id),
+          .eq('following_id', currentUserId),
         supabase
           .from('profiles')
           .select('id, username, location, karma_balance')
-          .neq('id', user.id)
+          .neq('id', currentUserId)
           .limit(10)
       ]);
 
@@ -62,6 +68,7 @@ export default function Social() {
       }
     } catch (error) {
       console.error('Error fetching social data:', error);
+      setError('Social data is unavailable right now. Check Supabase connectivity and user id mapping.');
     } finally {
       setLoading(false);
     }
@@ -72,7 +79,7 @@ export default function Social() {
       const { error } = await supabase
         .from('follows')
         .insert({
-          follower_id: user.id,
+          follower_id: currentUserId,
           following_id: userId
         });
 
@@ -88,7 +95,7 @@ export default function Social() {
       const { error } = await supabase
         .from('follows')
         .delete()
-        .eq('follower_id', user.id)
+        .eq('follower_id', currentUserId)
         .eq('following_id', userId);
 
       if (error) throw error;
@@ -102,7 +109,7 @@ export default function Social() {
     if (!giftModal || !giftAmount) return;
 
     const amount = parseInt(giftAmount);
-    if (amount <= 0 || amount > profile.karma_balance) {
+    if (amount <= 0 || amount > karmaBalance) {
       alert('Invalid amount');
       return;
     }
@@ -111,7 +118,7 @@ export default function Social() {
       const { error: giftError } = await supabase
         .from('karma_gifts')
         .insert({
-          giver_id: user.id,
+          giver_id: currentUserId,
           receiver_id: giftModal.id,
           amount,
           message: giftMessage
@@ -124,7 +131,7 @@ export default function Social() {
         .update({
           karma_balance: supabase.raw(`karma_balance - ${amount}`)
         })
-        .eq('id', user.id);
+        .eq('id', currentUserId);
 
       await supabase
         .from('profiles')
@@ -144,6 +151,20 @@ export default function Social() {
   };
 
   if (loading) return <div className="loading">Loading...</div>;
+  if (!currentUserId) {
+    return (
+      <div className="empty-state">
+        <p>Social is unavailable: logged-in user id is missing.</p>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="empty-state">
+        <p>{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="social-page">
@@ -328,7 +349,7 @@ export default function Social() {
 
             <div className="gift-form">
               <p className="karma-balance-info">
-                Your balance: {profile.karma_balance} karma
+                Your balance: {karmaBalance} karma
               </p>
 
               <div className="form-group">
@@ -337,7 +358,7 @@ export default function Social() {
                   id="amount"
                   type="number"
                   min="1"
-                  max={profile.karma_balance}
+                  max={karmaBalance}
                   value={giftAmount}
                   onChange={(e) => setGiftAmount(e.target.value)}
                   placeholder="How much karma?"

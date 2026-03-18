@@ -8,6 +8,25 @@ const normalizeToken = (value) => {
   return value.replace(/^Bearer\s+/i, "").trim();
 };
 
+const normalizeUser = (data = {}) => {
+  if (!data || typeof data !== "object") return null;
+  const id =
+    data.id ??
+    data.userId ??
+    data.user_id ??
+    data.uuid ??
+    data.sub ??
+    data?.user?.id ??
+    null;
+
+  return {
+    ...data,
+    id: id ?? null,
+    email: data.email ?? data?.user?.email ?? "",
+    username: data.username ?? data?.user?.username ?? "",
+  };
+};
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,11 +38,10 @@ export function AuthProvider({ children }) {
     
     if (token && storedUser) {
       try {
-        const userData = JSON.parse(storedUser);
+        const userData = normalizeUser(JSON.parse(storedUser));
         setUser(userData);
         localStorage.setItem("token", token);
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        console.log('Loaded user from localStorage:', userData);
       } catch (error) {
         console.error('Failed to parse user:', error);
         localStorage.removeItem("token");
@@ -36,14 +54,10 @@ export function AuthProvider({ children }) {
   // LOGIN - UPDATED
   const signIn = async (email, password) => {
     try {
-      console.log('Attempting login for:', email);
-      
       const response = await api.post("/auth/login", {
         email,
         password,
       });
-
-      console.log('Login response:', response.data);
       
       // ADJUST THIS BASED ON YOUR BACKEND RESPONSE
       const rawToken =
@@ -52,11 +66,13 @@ export function AuthProvider({ children }) {
         response.data?.jwt ||
         (typeof response.data === "string" ? response.data : "");
       const token = normalizeToken(rawToken);
-      const userData = response.data.user || { 
-        email,
-        id: response.data.userId,
-        username: response.data.username 
-      };
+      const userData = normalizeUser(
+        response.data.user || {
+          email,
+          id: response.data.userId,
+          username: response.data.username,
+        }
+      );
       
       if (token) {
         // Store token and user
@@ -66,7 +82,6 @@ export function AuthProvider({ children }) {
         // Update axios headers
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         
-        // UPDATE STATE - THIS TRIGGERS RE-RENDER
         setUser(userData);
         
         return { 

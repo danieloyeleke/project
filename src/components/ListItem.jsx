@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createItem } from "../api/items";
 
 const CATEGORIES = [
@@ -20,9 +20,9 @@ const CONDITIONS = [
   { value: "good", label: "Good", karma: 50 },
   { value: "fair", label: "Fair", karma: 25 },
 ];
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
-export default function ListItem({ onClose, onSuccess }) {
+export default function ListItem({ onBack, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -37,12 +37,25 @@ export default function ListItem({ onClose, onSuccess }) {
   const [error, setError] = useState("");
   const [isImageTooLarge, setIsImageTooLarge] = useState(false);
 
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
+
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
     if (file && file.size > MAX_FILE_SIZE) {
       setIsImageTooLarge(true);
       setError("Image must be 2MB or smaller");
+      setImageFile(null);
+      setPreview(null);
       return;
     }
     setIsImageTooLarge(false);
@@ -62,14 +75,22 @@ export default function ListItem({ onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.title.trim()) {
+      setError("Title is required");
+      return;
+    }
     setLoading(true);
     setError("");
 
     try {
-      await createItem(formData, imageFile);
+      const payload = {
+        ...formData,
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+      };
+      await createItem(payload, imageFile);
 
       onSuccess?.();
-      onClose?.();
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.message || "Failed to list item");
@@ -78,14 +99,18 @@ export default function ListItem({ onClose, onSuccess }) {
     }
   };
 
+  const handleBack = onBack || onClose;
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className="list-item-page">
+      <div className="list-item-page-card">
         <div className="modal-header">
           <h2>List Item</h2>
-          <button className="close-btn" onClick={onClose}>
-            &times;
-          </button>
+          {handleBack && (
+            <button className="btn-secondary" type="button" onClick={handleBack}>
+              Back
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="list-item-form">
@@ -98,63 +123,58 @@ export default function ListItem({ onClose, onSuccess }) {
             )}
           </div>
 
-            <div className="form-group">
-                    <input
-                      required
-                      placeholder="Item title"
-                      value={formData.title}
-                      onChange={(e) =>
-                        setFormData({ ...formData, title: e.target.value })
-                      }
-                    />
-            </div>
+          <div className="form-group">
+            <input
+              required
+              placeholder="Item title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            />
+          </div>
 
-            <div className="form-group">
-                    <textarea
-                    
-                      placeholder="Description"
-                      value={formData.description}
-                      onChange={(e) =>
-                        setFormData({ ...formData, description: e.target.value })
-                      }
-                    />
-              </div>
+          <div className="form-group">
+            <textarea
+              placeholder="Description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
 
+          <div className="form-group">
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </div>
 
-              <div className="form-group">
-                    <select
-                      value={formData.category}
-                      onChange={(e) =>
-                        setFormData({ ...formData, category: e.target.value })
-                      }
-                    >
-                      {CATEGORIES.map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
-                    </select>
-              </div>
+          <div className="form-group">
+            <select
+              value={formData.condition}
+              onChange={(e) => handleConditionChange(e.target.value)}
+            >
+              {CONDITIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div className="form-group">
-          <select
-            value={formData.condition}
-            onChange={(e) => handleConditionChange(e.target.value)}
-          >
-            {CONDITIONS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-              </div>
-
-               
           <div className="karma-box">
             Karma Value: <strong>{formData.karmaValue}</strong>
           </div>
 
           {error && <div className="error-message">{error}</div>}
 
-          <button className="btn-primary" disabled={loading || isImageTooLarge}>
+          <button
+            className="btn-primary"
+            type="submit"
+            disabled={loading || isImageTooLarge || !formData.title.trim()}
+          >
             {loading ? "Listing..." : "List Item"}
           </button>
         </form>

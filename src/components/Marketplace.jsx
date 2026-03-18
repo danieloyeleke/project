@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import ItemCard from "./ItemCard";
-import { getItems } from "../api/items";
+import { claimItem, getItems } from "../api/items";
 
 const API_ORIGIN = "http://localhost:8080";
 
@@ -16,7 +16,18 @@ const normalizeItem = (item) => ({
   ...item,
   imageUrl: normalizeImageUrl(item.imageUrl || item.image_url),
   karmaValue: item.karmaValue != null ? item.karmaValue : item.karma_value,
+  escrowId: item.escrowId ?? item.escrow_id,
 });
+
+const getOwnerName = (item) =>
+  item?.owner?.fullName ||
+  item?.owner?.full_name ||
+  item?.owner?.username ||
+  item?.ownerName ||
+  item?.owner_name ||
+  item?.ownerUsername ||
+  item?.owner_username ||
+  "";
 
 export default function Marketplace({ onItemClick }) {
   const { profile } = useAuth();
@@ -25,7 +36,12 @@ export default function Marketplace({ onItemClick }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+
   const [selectedItem, setSelectedItem] = useState(null);
+  const [escrowItem, setEscrowItem] = useState(null);
+  const [deliveryMethod, setDeliveryMethod] = useState("meetup");
+  const [claimLoading, setClaimLoading] = useState(false);
+  const [claimError, setClaimError] = useState("");
 
   useEffect(() => {
     fetchItems();
@@ -36,11 +52,9 @@ export default function Marketplace({ onItemClick }) {
     try {
       const res = await getItems(filter);
       const list = Array.isArray(res) ? res : res?.data || [];
-
       const availableItems = list
         .map(normalizeItem)
         .filter((item) => String(item.status || "").toUpperCase() === "AVAILABLE");
-
       setItems(availableItems);
     } catch (e) {
       console.error("Failed to fetch items", e);
@@ -50,10 +64,14 @@ export default function Marketplace({ onItemClick }) {
     }
   };
 
-  const searchedItems = items.filter(
-    (item) =>
-      item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  const searchedItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [items, searchTerm]
   );
 
   const filteredItems =
@@ -71,10 +89,44 @@ export default function Marketplace({ onItemClick }) {
     "Other",
   ];
 
-  const closeModal = () => setSelectedItem(null);
+  const closePreviewModal = () => setSelectedItem(null);
+
+  const closeEscrowModal = () => {
+    setEscrowItem(null);
+    setDeliveryMethod("meetup");
+    setClaimError("");
+  };
 
   const handleEscrowStart = (item) => {
-    console.log("Start escrow for:", item.id);
+    setSelectedItem(null);
+    setEscrowItem(item);
+    setDeliveryMethod("meetup");
+    setClaimError("");
+  };
+
+  const handleCardClick = (item) => {
+    if (onItemClick) {
+      onItemClick(item);
+      return;
+    }
+    setSelectedItem(item);
+  };
+
+  const handleConfirmClaim = async () => {
+    if (!escrowItem) return;
+
+    setClaimLoading(true);
+    setClaimError("");
+    try {
+      await claimItem(escrowItem.id, deliveryMethod);
+      closeEscrowModal();
+      await fetchItems();
+    } catch (err) {
+      console.error(err);
+      setClaimError(err.response?.data?.message || "Failed to claim item");
+    } finally {
+      setClaimLoading(false);
+    }
   };
 
   return (
@@ -115,10 +167,7 @@ export default function Marketplace({ onItemClick }) {
             <ItemCard
               key={item.id}
               item={item}
-              onClick={() => {
-                setSelectedItem(item);
-                onItemClick?.(item);
-              }}
+              onClick={() => handleCardClick(item)}
               canAfford={profile?.karma_balance >= item.karmaValue}
             />
           ))}
@@ -126,56 +175,112 @@ export default function Marketplace({ onItemClick }) {
       )}
 
       {selectedItem && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="item-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={closeModal}>
-              ?
+        <div className="modal-overlay" onClick={closePreviewModal}>
+          <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={closePreviewModal}>
+              x
             </button>
 
-            {selectedItem.imageUrl ? (
-              <img
-                src={selectedItem.imageUrl}
-                alt={selectedItem.title}
-                className="modal-image"
-              />
-            ) : (
-              <div className="no-image modal-image">??</div>
-            )}
-
-            <div className="modal-content">
-              <h2>{selectedItem.title}</h2>
-
-              <p className="modal-description">{selectedItem.description}</p>
-
-              <div className="modal-meta">
-                <span>
-                  <strong>Condition:</strong> {selectedItem.condition}
-                </span>
-                <span>
-                  <strong>Category:</strong> {selectedItem.category}
-                </span>
-                <span>
-                  <strong>Karma:</strong> ? {selectedItem.karmaValue}
-                </span>
+            <div className="preview-body">
+              <div className="preview-image-section">
+                {selectedItem.imageUrl ? (
+                  <img
+                    src={selectedItem.imageUrl}
+                    alt={selectedItem.title}
+                    className="preview-image"
+                  />
+                ) : (
+                  <div className="no-image preview-image">[No image]</div>
+                )}
               </div>
 
-              <div className="modal-owner">
-                <h4>Owner</h4>
+              <div className="preview-info">
+                <h2 className="preview-title">{selectedItem.title}</h2>
+                <p className="preview-description">{selectedItem.description}</p>
+
+                <div className="preview-meta">
+                  <span>
+                    <strong>Condition:</strong> {selectedItem.condition}
+                  </span>
+                  <span>
+                    <strong>Category:</strong> {selectedItem.category}
+                  </span>
+                  <span>
+                    <strong>Karma:</strong> {selectedItem.karmaValue}
+                  </span>
+                </div>
+
+                <div className="preview-owner">
+                  <h4>Owner</h4>
+                  <p>{getOwnerName(selectedItem) || selectedItem.ownerEmail || "Unknown owner"}</p>
+                </div>
+
+                <button
+                  className="escrow-btn"
+                  disabled={profile?.karma_balance < selectedItem.karmaValue}
+                  onClick={() => handleEscrowStart(selectedItem)}
+                >
+                  Start Escrow
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {escrowItem && (
+        <div className="modal-overlay" onClick={closeEscrowModal}>
+          <div className="claim-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={closeEscrowModal}>
+              x
+            </button>
+
+            <h2>Choose Delivery Method</h2>
+
+            <div className="claim-summary">
+              {escrowItem.imageUrl ? (
+                <img src={escrowItem.imageUrl} alt={escrowItem.title} />
+              ) : (
+                <div className="no-image">[No image]</div>
+              )}
+
+              <div>
+                <h3>{escrowItem.title}</h3>
+                <p>{escrowItem.description}</p>
                 <p>
-                  {selectedItem.owner?.fullName ||
-                    selectedItem.ownerEmail ||
-                    "Unknown owner"}
+                  <strong>Karma:</strong> {escrowItem.karmaValue}
                 </p>
               </div>
-
-              <button
-                className="escrow-btn"
-                disabled={profile?.karma_balance < selectedItem.karmaValue}
-                onClick={() => handleEscrowStart(selectedItem)}
-              >
-                Start Escrow
-              </button>
             </div>
+
+            <div className="delivery-options">
+              {[
+                { value: "meetup", label: "Meetup" },
+                { value: "delivery", label: "Delivery" },
+                { value: "shipping", label: "Shipping" },
+              ].map((method) => (
+                <label key={method.value} className="delivery-option">
+                  <input
+                    type="radio"
+                    name="deliveryMethod"
+                    value={method.value}
+                    checked={deliveryMethod === method.value}
+                    onChange={(e) => setDeliveryMethod(e.target.value)}
+                  />
+                  <span className="delivery-label">{method.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {claimError && <div className="error-message">{claimError}</div>}
+
+            <button
+              className="confirm-claim btn-primary"
+              onClick={handleConfirmClaim}
+              disabled={claimLoading}
+            >
+              {claimLoading ? "Claiming..." : "Confirm Claim"}
+            </button>
           </div>
         </div>
       )}

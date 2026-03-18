@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import Auth from './components/Auth';
-import Marketplace from './components/Marketplace';
-import ListItem from './components/ListItem';
-import ItemDetail from './components/ItemDetail';
-import Profile from './components/Profile';
-import Social from './components/Social';
-import './styles/App.css';
+import React, { useState } from "react";
+import { useAuth } from "./contexts/AuthContext";
+import Auth from "./components/Auth";
+import Marketplace from "./components/Marketplace";
+import ListItem from "./components/ListItem";
+import ItemDetail from "./components/ItemDetail";
+import Profile from "./components/Profile";
+import Social from "./components/Social";
+import "./styles/App.css";
 
 function AppContent() {
-  const { user, profile, loading, logout } = useAuth();
-  const [currentView, setCurrentView] = useState('marketplace');
-  const [showListModal, setShowListModal] = useState(false);
+  const { user, loading, logout } = useAuth();
+  const [currentView, setCurrentView] = useState("marketplace");
   const [selectedItem, setSelectedItem] = useState(null);
 
   if (loading) {
@@ -23,86 +22,65 @@ function AppContent() {
     );
   }
 
-  if (!user) {
-    return <Auth />;
-  }
+  if (!user) return <Auth />;
 
   return (
     <div className="app">
       <nav className="navbar">
         <div className="nav-content">
           <div className="nav-brand">
-            <h1 onClick={() => setCurrentView('marketplace')}>
-              <span className="logo-icon">♻️</span>
+            <h1 onClick={() => setCurrentView("marketplace")}>
+              <span className="logo-icon">♻</span>
               Karma Economy
             </h1>
           </div>
 
           <div className="nav-menu">
             <button
-              className={currentView === 'marketplace' ? 'active' : ''}
-              onClick={() => setCurrentView('marketplace')}
+              className={currentView === "marketplace" ? "active" : ""}
+              onClick={() => setCurrentView("marketplace")}
             >
               Marketplace
             </button>
             <button
-              className={currentView === 'social' ? 'active' : ''}
-              onClick={() => setCurrentView('social')}
+              className={currentView === "social" ? "active" : ""}
+              onClick={() => setCurrentView("social")}
             >
               Social
             </button>
             <button
-              className={currentView === 'profile' ? 'active' : ''}
-              onClick={() => setCurrentView('profile')}
+              className={currentView === "profile" ? "active" : ""}
+              onClick={() => setCurrentView("profile")}
             >
               Profile
             </button>
           </div>
 
           <div className="nav-actions">
-            {profile && (
-              <div className="karma-display">
-                <span className="karma-icon">✨</span>
-                <span className="karma-amount">{profile.karma_balance}</span>
-              </div>
-            )}
-            <button className="btn-primary" onClick={() => setShowListModal(true)}>
+            <button
+              className={`btn-primary ${currentView === "list-item" ? "active" : ""}`}
+              onClick={() => setCurrentView("list-item")}
+            >
               List Item
             </button>
-                      {user && (
-                        <button
-                          className="btn-secondary"
-                              onClick={logout}>
-                            Logout
-                        </button>
-                  )}
-
-            {/* <button className="btn-secondary" onClick={signOut}>
+            <button className="btn-secondary" onClick={logout}>
               Logout
-            </button> */}
+            </button>
           </div>
         </div>
       </nav>
 
       <main className="main-content">
-        {currentView === 'marketplace' && (
-          <Marketplace onItemClick={setSelectedItem} />
+        {currentView === "marketplace" && <Marketplace onItemClick={setSelectedItem} />}
+        {currentView === "social" && <Social />}
+        {currentView === "profile" && <Profile />}
+        {currentView === "list-item" && (
+          <ListItem
+            onBack={() => setCurrentView("marketplace")}
+            onSuccess={() => setCurrentView("marketplace")}
+          />
         )}
-        {currentView === 'social' && <Social />}
-        {currentView === 'profile' && <Profile />}
       </main>
-
-      {showListModal && (
-        <ListItem
-          onClose={() => setShowListModal(false)}
-          onSuccess={() => {
-            setShowListModal(false);
-            if (currentView === 'marketplace') {
-              window.location.reload();
-            }
-          }}
-        />
-      )}
 
       {selectedItem && (
         <ItemDetail
@@ -119,9 +97,5 @@ function AppContent() {
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
+  return <AppContent />;
 }
