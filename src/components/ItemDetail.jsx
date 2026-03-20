@@ -1,235 +1,189 @@
-// import React, { useState } from "react";
-// import api from "../api/axios";
-// import { useAuth } from "../contexts/AuthContext";
-// import { claimItem } from '../api/items';
-
-// export default function ItemDetail({ item, onClose, onClaimed }) {
-//   const { user } = useAuth();
-//   const [deliveryMethod, setDeliveryMethod] = useState("meetup");
-//   const [loading, setLoading] = useState(false);
-//   const [error, setError] = useState("");
-
-//   const isOwner = user && item.owner?.id === user.id;
-
-
-// //   const handleClaim = async () => {
-// //   try {
-// //     await claimItem(item.id, deliveryMethod);
-// //     onClaimed?.();
-// //     onClose?.();
-// //   } catch (e) {
-// //     setError("Unable to claim item");
-// //   }
-// // };
-
-
-//   const handleClaim = async () => {
-//     setLoading(true);
-//     setError("");
-
-//     try {
-//       await api.post(`/items/${item.id}/claim`, {
-//         deliveryMethod,
-//       });
-
-//       if (onClaimed) onClaimed();
-//       if (onClose) onClose();
-//     } catch (err) {
-//       console.error(err);
-//       setError(
-//         err.response?.data?.message || "Failed to claim item"
-//       );
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   return (
-//     <div className="modal-overlay" onClick={onClose}>
-//       <div
-//         className="modal-content item-detail-modal"
-//         onClick={(e) => e.stopPropagation()}
-//       >
-//         <button className="close-btn" onClick={onClose}>
-//           &times;
-//         </button>
-
-//         <div className="item-detail">
-//           <div className="item-detail-info">
-//             <h2>{item.title}</h2>
-
-//             <p>{item.description}</p>
-
-//             <div className="karma-info">
-//               <strong>Karma:</strong> {item.karmaValue}
-//             </div>
-
-//             {!isOwner && (
-//               <>
-//                 <div className="delivery-options">
-//                   <label>
-//                     <input
-//                       type="radio"
-//                       value="meetup"
-//                       checked={deliveryMethod === "meetup"}
-//                       onChange={(e) => setDeliveryMethod(e.target.value)}
-//                     />
-//                     Meetup
-//                   </label>
-
-//                   <label>
-//                     <input
-//                       type="radio"
-//                       value="delivery"
-//                       checked={deliveryMethod === "delivery"}
-//                       onChange={(e) => setDeliveryMethod(e.target.value)}
-//                     />
-//                     Delivery
-//                   </label>
-
-//                   <label>
-//                     <input
-//                       type="radio"
-//                       value="shipping"
-//                       checked={deliveryMethod === "shipping"}
-//                       onChange={(e) => setDeliveryMethod(e.target.value)}
-//                     />
-//                     Shipping
-//                   </label>
-//                 </div>
-
-//                 {error && (
-//                   <div className="error-message">{error}</div>
-//                 )}
-
-//                 <button
-//                   className="btn-primary"
-//                   onClick={handleClaim}
-//                   disabled={loading}
-//                 >
-//                   {loading ? "Claiming..." : "Claim Item"}
-//                 </button>
-//               </>
-//             )}
-
-//             {isOwner && (
-//               <div className="owner-notice">
-//                 This is your item
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-
-
-import React, { useState } from "react";
-import api from "../api/axios";
+import React, { useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import TrustBadge from "./TrustBadge";
 
-export default function ItemDetail({ item, onClose, onClaimed }) {
-  const { user } = useAuth();
+const DELIVERY_METHODS = [
+  {
+    value: "meetup",
+    label: "Meetup",
+    description: "Coordinate a safe handoff in person.",
+  },
+  {
+    value: "delivery",
+    label: "Local Delivery",
+    description: "Arrange dropoff within your area.",
+  },
+  {
+    value: "shipping",
+    label: "Shipping",
+    description: "Send it through a tracked carrier.",
+  },
+];
+
+const getTrustLevel = (item) => {
+  const escrowProtected = Boolean(item.escrowProtected ?? item.escrow_protected);
+  const sellerVerified = Boolean(
+    item.sellerVerified ?? item.seller_verified ?? item.owner?.verified
+  );
+  const karmaValue = item.karmaValue ?? item.karma_value ?? 0;
+
+  if (escrowProtected && sellerVerified && karmaValue >= 100) return "elite";
+  if (sellerVerified) return "trusted";
+  if (escrowProtected) return "safe";
+  return "unverified";
+};
+
+const getOwnerName = (item) =>
+  item?.owner?.fullName ||
+  item?.owner?.full_name ||
+  item?.owner?.username ||
+  item?.ownerName ||
+  item?.owner_name ||
+  item?.ownerUsername ||
+  item?.owner_username ||
+  item?.ownerEmail ||
+  "Unknown owner";
+
+export default function ItemDetail({ item, onBack, onStartCheckout }) {
+  const { user, profile } = useAuth();
   const [deliveryMethod, setDeliveryMethod] = useState("meetup");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const isOwner = user && item.ownerId === user.id;
+  const trustLevel = useMemo(() => getTrustLevel(item), [item]);
+  const ownerName = useMemo(() => getOwnerName(item), [item]);
+  const karmaBalance = profile?.karma_balance ?? profile?.karmaBalance ?? user?.karma_balance ?? 0;
+  const karmaValue = item?.karmaValue ?? item?.karma_value ?? 0;
+  const isOwner = Boolean(user && (item?.ownerId === user.id || item?.owner_id === user.id));
+  const canAfford = karmaBalance >= karmaValue;
 
-  const handleClaim = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      await api.post(`/items/${item.id}/claim`, {
-        deliveryMethod,
-      });
-
-      onClaimed?.();
-      onClose?.();
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.message || "Failed to claim item");
-    } finally {
-      setLoading(false);
+  const handleStartCheckout = () => {
+    if (isOwner) {
+      setError("You cannot start escrow on your own listing.");
+      return;
     }
+
+    if (!canAfford) {
+      setError(`You need ${karmaValue - karmaBalance} more karma to continue.`);
+      return;
+    }
+
+    setError("");
+    onStartCheckout?.({
+      item,
+      deliveryMethod,
+    });
   };
 
+  if (!item) return null;
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-content item-detail-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button className="close-btn" onClick={onClose}>
-          ×
+    <section className="item-detail-page">
+      <div className="item-detail-shell">
+        <button className="back-btn detail-back-btn" onClick={onBack}>
+          Back to Marketplace
         </button>
 
-        <h2>{item.title}</h2>
-        <p>{item.description}</p>
+        <div className="item-detail-layout">
+          <div className="item-detail-hero">
+            <div className="item-detail-media">
+              {item.imageUrl || item.image_url ? (
+                <img
+                  src={item.imageUrl || item.image_url}
+                  alt={item.title}
+                  className="detail-image"
+                />
+              ) : (
+                <div className="detail-image detail-image-fallback">[No image]</div>
+              )}
+            </div>
 
-        <div className="karma-info">
-          <strong>Karma:</strong> {item.karmaValue}
+            <div className="item-detail-copy">
+              <div className="item-detail-heading">
+                <TrustBadge level={trustLevel} />
+                <h2>{item.title}</h2>
+                <p className="item-detail-description">{item.description}</p>
+              </div>
+
+              <div className="item-detail-meta">
+                <div className="detail-meta-card">
+                  <span className="detail-meta-label">Condition</span>
+                  <strong>{item.condition || "Not specified"}</strong>
+                </div>
+                <div className="detail-meta-card">
+                  <span className="detail-meta-label">Category</span>
+                  <strong>{item.category || "Other"}</strong>
+                </div>
+                <div className="detail-meta-card">
+                  <span className="detail-meta-label">Karma Cost</span>
+                  <strong>{karmaValue}</strong>
+                </div>
+              </div>
+
+              <div className="detail-owner-card">
+                <span className="detail-section-label">Owner</span>
+                <strong>{ownerName}</strong>
+                <p>{item?.owner?.location || item?.ownerLocation || "Location not shared"}</p>
+              </div>
+            </div>
+          </div>
+
+          <aside className="detail-action-panel">
+            <div className="detail-escrow-card">
+              <span className="detail-section-label">Escrow</span>
+              <h3>Protected claim flow</h3>
+              <p>
+                Review your delivery method now, then confirm the escrow lock on the next
+                screen before the seller can proceed.
+              </p>
+
+              <div className="detail-balance-row">
+                <span>Your Karma</span>
+                <strong>{karmaBalance}</strong>
+              </div>
+
+              <div className="delivery-picker">
+                {DELIVERY_METHODS.map((method) => (
+                  <label key={method.value} className="delivery-option detail-delivery-option">
+                    <input
+                      type="radio"
+                      name="deliveryMethod"
+                      value={method.value}
+                      checked={deliveryMethod === method.value}
+                      onChange={(e) => setDeliveryMethod(e.target.value)}
+                    />
+                    <span className="delivery-option-copy">
+                      <span className="delivery-label">{method.label}</span>
+                      <span className="delivery-description">{method.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              {error && <div className="error-message">{error}</div>}
+
+              {isOwner ? (
+                <div className="owner-notice">This is your item listing.</div>
+              ) : (
+                <>
+                  {!canAfford && (
+                    <div className="error-message">
+                      You need {karmaValue - karmaBalance} more karma to start escrow.
+                    </div>
+                  )}
+
+                  <button
+                    className="escrow-btn detail-escrow-btn"
+                    onClick={handleStartCheckout}
+                    disabled={!canAfford}
+                  >
+                    Review & Lock Karma
+                  </button>
+                </>
+              )}
+            </div>
+          </aside>
         </div>
-
-        {!isOwner && (
-          <>
-            {<div className="delivery-options">
-              {["meetup", "delivery", "shipping"].map((m) => (
-                <label key={m}>
-                  <input
-                    type="radio"
-                    value={m}
-                    checked={deliveryMethod === m}
-                    onChange={(e) => setDeliveryMethod(e.target.value)}
-                  />
-                  {m}
-                </label>
-              ))}
-            </div> 
-            
-//             <div className="delivery-options">
-//   {[
-//     { value: "meetup", label: "Meetup 🤝" },
-//     { value: "delivery", label: "Delivery 🚗" },
-//     { value: "shipping", label: "Shipping 📦" },
-//   ].map((method) => (
-//     <label key={method.value} className="delivery-option">
-//       <input
-//         type="radio"
-//         name="deliveryMethod"
-//         value={method.value}
-//         checked={deliveryMethod === method.value}
-//         onChange={() => setDeliveryMethod(method.value)}
-//       />
-//       <span className="delivery-label">{method.label}</span>
-//     </label>
-//   ))}
-// </div>
-
-            
-            }
-
-            {error && <div className="error-message">{error}</div>}
-
-            <button
-              className="btn-primary"
-              onClick={handleClaim}
-              disabled={loading}
-            >
-              {loading ? "Claiming..." : "Claim Item"}
-            </button>
-          </>
-        )}
-
-        {isOwner && (
-          <div className="owner-notice">This is your item</div>
-        )}
       </div>
-    </div>
+    </section>
   );
 }

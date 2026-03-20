@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
 
 const AuthContext = createContext();
@@ -8,112 +8,169 @@ const normalizeToken = (value) => {
   return value.replace(/^Bearer\s+/i, "").trim();
 };
 
+const normalizeUser = (data = {}) => {
+  if (!data || typeof data !== "object") return null;
+  const id =
+    data.id ??
+    data.userId ??
+    data.user_id ??
+    data.uuid ??
+    data.sub ??
+    data?.user?.id ??
+    null;
+
+  return {
+    ...data,
+    id: id ?? null,
+    email: data.email ?? data?.user?.email ?? "",
+    username: data.username ?? data?.user?.username ?? "",
+  };
+};
+
+const buildFallbackProfile = (userData) => ({
+  username: userData?.username || userData?.email?.split("@")[0] || "User",
+  bio: "",
+  karmaBalance: userData?.karmaBalance ?? userData?.karma_balance ?? 25,
+  totalKarmaEarned: userData?.totalKarmaEarned ?? userData?.total_karma_earned ?? 25,
+  totalKarmaSpent: userData?.totalKarmaSpent ?? userData?.total_karma_spent ?? 0,
+});
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // CRITICAL: Load user from localStorage on app start
-  useEffect(() => {
-    const token = normalizeToken(localStorage.getItem("token"));
-    const storedUser = localStorage.getItem("user");
-    
-    if (token && storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        setUser(userData);
-        localStorage.setItem("token", token);
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        console.log('Loaded user from localStorage:', userData);
-      } catch (error) {
-        console.error('Failed to parse user:', error);
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-      }
+  const fetchProfile = useCallback(async (userData) => {
+    if (!userData) {
+      setProfile(null);
+      return null;
     }
-    setLoading(false);
+
+    try {
+      const response = await api.get("/profile/me");
+      setProfile(response.data);
+      return response.data;
+    } catch (error) {
+      const status = error?.response?.status;
+      const message =
+        (typeof error?.response?.data === "string" ? error.response.data : "") ||
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "";
+
+      if (status === 400 && /profile not found/i.test(message)) {
+        const fallbackProfile = buildFallbackProfile(userData);
+        setProfile(fallbackProfile);
+        return fallbackProfile;
+      }
+
+      console.error("Failed to fetch profile:", error);
+      setProfile(null);
+      return null;
+    }
   }, []);
 
-  // LOGIN - UPDATED
+  useEffect(() => {
+    const loadSession = async () => {
+      const token = normalizeToken(localStorage.getItem("token"));
+      const storedUser = localStorage.getItem("user");
+
+      if (token && storedUser) {
+        try {
+          const userData = normalizeUser(JSON.parse(storedUser));
+          setUser(userData);
+          localStorage.setItem("token", token);
+          api.defaults.headers.common.Authorization = `Bearer ${token}`;
+          await fetchProfile(userData);
+        } catch (error) {
+          console.error("Failed to parse user:", error);
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setUser(null);
+          setProfile(null);
+        }
+      }
+
+      setLoading(false);
+    };
+
+    loadSession();
+  }, [fetchProfile]);
+
   const signIn = async (email, password) => {
     try {
-      console.log('Attempting login for:', email);
-      
       const response = await api.post("/auth/login", {
         email,
         password,
       });
 
-      console.log('Login response:', response.data);
-      
-      // ADJUST THIS BASED ON YOUR BACKEND RESPONSE
       const rawToken =
         response.data?.token ||
         response.data?.accessToken ||
         response.data?.jwt ||
         (typeof response.data === "string" ? response.data : "");
       const token = normalizeToken(rawToken);
-      const userData = response.data.user || { 
-        email,
-        id: response.data.userId,
-        username: response.data.username 
-      };
-      
+      const userData = normalizeUser(
+        response.data.user || {
+          email,
+          id: response.data.userId,
+          username: response.data.username,
+        }
+      );
+
       if (token) {
-        // Store token and user
         localStorage.setItem("token", token);
         localStorage.setItem("user", JSON.stringify(userData));
-        
-        // Update axios headers
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        // UPDATE STATE - THIS TRIGGERS RE-RENDER
+        api.defaults.headers.common.Authorization = `Bearer ${token}`;
         setUser(userData);
-        
-        return { 
-          success: true, 
-          data: response.data 
-        };
-      } else {
-        console.error('No token in response');
-        return { 
-          success: false, 
-          error: "No authentication token received" 
+        await fetchProfile(userData);
+
+        return {
+          success: true,
+          data: response.data,
         };
       }
+
+      console.error("No token in response");
+      return {
+        success: false,
+        error: "No authentication token received",
+      };
     } catch (error) {
-      console.error('Login error:', error.response?.data || error.message);
-      
-      // Handle specific error cases
+      console.error("Login error:", error.response?.data || error.message);
+
       if (error.response?.status === 401) {
-        return { 
-          success: false, 
-          error: "Invalid email or password" 
-        };
-      } else if (error.response?.status === 404) {
-        return { 
-          success: false, 
-          error: "Login endpoint not found. Check your API URL." 
+        return {
+          success: false,
+          error: "Invalid email or password",
         };
       }
-      
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 
-               error.response?.data?.error || 
-               "Login failed. Please try again." 
+      if (error.response?.status === 404) {
+        return {
+          success: false,
+          error: "Login endpoint not found. Check your API URL.",
+        };
+      }
+
+      return {
+        success: false,
+        error:
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          "Login failed. Please try again.",
       };
     }
   };
 
-  // LOGOUT - UPDATED
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    delete api.defaults.headers.common['Authorization'];
-    setUser(null); // THIS TRIGGERS RE-RENDER TO SHOW LOGIN
+    delete api.defaults.headers.common.Authorization;
+    setUser(null);
+    setProfile(null);
   };
 
-  // Keep signUp as you had it
   const signUp = async (email, password, username, fullName, location) => {
     try {
       const response = await api.post("/auth/register", {
@@ -125,21 +182,25 @@ export function AuthProvider({ children }) {
       });
       return { success: true, data: response.data };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.response?.data?.message || "Registration failed" 
+      return {
+        success: false,
+        error: error.response?.data?.message || "Registration failed",
       };
     }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user,
-      loading,
-      signIn,
-      signUp,
-      logout  // Changed from signOut to logout
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        signIn,
+        signUp,
+        logout,
+        refreshProfile: () => fetchProfile(user),
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

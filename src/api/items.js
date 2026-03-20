@@ -41,6 +41,22 @@ export const createItem = async (itemData, imageFile = null) => {
 };
 
 /**
+ * Update an existing item
+ */
+export const updateItem = async (itemId, itemData) => {
+  const response = await api.put(`/items/${itemId}`, itemData);
+  return response.data;
+};
+
+/**
+ * Delete an item
+ */
+export const deleteItem = async (itemId) => {
+  const response = await api.delete(`/items/${itemId}`);
+  return response.data;
+};
+
+/**
  * Claim an item
  */
 export const claimItem = async (itemId, deliveryMethod) => {
