@@ -85,6 +85,12 @@ export default function CheckoutEscrowConfirmation({
   const deliveryCopy = DELIVERY_COPY[deliveryMethod] || DELIVERY_COPY.meetup;
   const ownerName = useMemo(() => getOwnerName(item), [item]);
   const isOwner = useMemo(() => isItemOwner(item, user), [item, user]);
+  const buyerName =
+    user?.username ||
+    user?.fullName ||
+    user?.full_name ||
+    user?.email ||
+    "Buyer";
 
   const handleConfirm = async () => {
     if (!item?.id || submitting) return;
@@ -116,13 +122,16 @@ export default function CheckoutEscrowConfirmation({
         id: `${item.id}-${Date.now()}`,
         item,
         sellerName: ownerName,
+        buyerName,
         deliveryMethod,
         deliveryDetails: deliveryDetails.trim(),
-        status: "Awaiting Shipment",
+        status: "Awaiting_Dispatch",
         lockedKarma,
         availableKarmaAfter: nextBalance,
         placedAt: new Date().toISOString(),
+        trackingNumber: "",
         escrowReleaseAt: new Date(Date.now() + ESCROW_HOLD_SECONDS * 1000).toISOString(),
+        carbonSavedKg: Math.max(1, Math.round((lockedKarma || 10) * 0.4)),
       });
     } catch (err) {
       console.error(err);

@@ -44,7 +44,26 @@ export const createItem = async (itemData, imageFile = null) => {
  * Update an existing item
  */
 export const updateItem = async (itemId, itemData) => {
-  const response = await api.put(`/items/${itemId}`, itemData);
+  const formData = new FormData();
+
+  if (itemData.title != null) formData.append("title", itemData.title);
+  if (itemData.description != null) formData.append("description", itemData.description);
+  if (itemData.category != null) formData.append("category", itemData.category);
+  if (itemData.condition != null) formData.append("condition", itemData.condition);
+  if (itemData.karmaValue != null) {
+    formData.append("karmaValue", String(itemData.karmaValue));
+  }
+
+  // Optional image support for future use
+  const fileToUpload = itemData.image || itemData.imageFile;
+  if (fileToUpload) {
+    formData.append("image", fileToUpload);
+  }
+
+  const response = await api.put(`/items/${itemId}`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
   return response.data;
 };
 

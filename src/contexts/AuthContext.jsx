@@ -133,6 +133,8 @@ export function AuthProvider({ children }) {
       }
 
       console.error("No token in response");
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
       return {
         success: false,
         error: "No authentication token received",
@@ -141,6 +143,8 @@ export function AuthProvider({ children }) {
       console.error("Login error:", error.response?.data || error.message);
 
       if (error.response?.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
         return {
           success: false,
           error: "Invalid email or password",
@@ -182,9 +186,65 @@ export function AuthProvider({ children }) {
       });
       return { success: true, data: response.data };
     } catch (error) {
+      console.error("Registration error:", error.response?.data || error.message);
       return {
         success: false,
-        error: error.response?.data?.message || "Registration failed",
+        error:
+          (typeof error?.response?.data === "string" && error.response.data) ||
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Registration failed",
+      };
+    }
+  };
+
+  const signInWithGoogle = async (credential) => {
+    try {
+      const response = await api.post("/auth/google", { credential });
+
+      const rawToken =
+        response.data?.token ||
+        response.data?.accessToken ||
+        response.data?.jwt ||
+        (typeof response.data === "string" ? response.data : "");
+      const token = normalizeToken(rawToken);
+      const userData = normalizeUser(response.data.user || response.data);
+
+      if (!token) {
+        return { success: false, error: "No authentication token received" };
+      }
+
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(userData));
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+      setUser(userData);
+      await fetchProfile(userData);
+
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error("Google auth error:", error.response?.data || error.message);
+      return {
+        success: false,
+        error:
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Google authentication failed",
+      };
+    }
+  };
+
+  const requestPasswordReset = async (email) => {
+    try {
+      await api.post("/auth/forgot-password", { email });
+      return { success: true };
+    } catch (error) {
+      console.error("Password reset error:", error.response?.data || error.message);
+      return {
+        success: false,
+        error:
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Unable to send reset email",
       };
     }
   };
@@ -197,12 +257,14 @@ export function AuthProvider({ children }) {
         loading,
         signIn,
         signUp,
+        requestPasswordReset,
         logout,
+        signInWithGoogle,
         refreshProfile: () => fetchProfile(user),
       }}
     >
-      {children}
-    </AuthContext.Provider>
+    {children}
+  </AuthContext.Provider>
   );
 }
 

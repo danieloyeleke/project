@@ -32,6 +32,92 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(numericValue) ? numericValue : fallback;
 };
 
+const buildActivityEntries = (myItems = [], claimedItems = []) => {
+  const activities = [];
+
+  myItems.forEach((item) => {
+    const status = (item.status || item.item_status || "").toLowerCase();
+    const isCompleted = /complete|released|closed/.test(status);
+    const isInEscrow = /escrow|in_escrow|locked/.test(status);
+
+    activities.push({
+      id: `seller-${item.id || item._id || item.title}`,
+      type: "SELLER",
+      description: isCompleted
+        ? `Karma released for your listing "${item.title}".`
+        : isInEscrow
+        ? `Escrow active on your listing "${item.title}".`
+        : `Listing "${item.title}" status: ${item.status || "Pending"}.`,
+      karmaAmount: item.karmaValue ?? item.karma_value ?? 0,
+      createdAt: item.updatedAt || item.updated_at || new Date().toISOString(),
+    });
+  });
+
+  claimedItems.forEach((item) => {
+    const status = (item.status || item.item_status || "").toLowerCase();
+    const isCompleted = /complete|released|closed/.test(status);
+    const isInEscrow = /escrow|in_escrow|locked/.test(status);
+
+    activities.push({
+      id: `buyer-${item.id || item._id || item.title}`,
+      type: "BUYER",
+      description: isCompleted
+        ? `You received and approved "${item.title}". Karma sent to seller.`
+        : isInEscrow
+        ? `Escrow locked for "${item.title}". Awaiting delivery.`
+        : `Claimed "${item.title}" — status: ${item.status || "Pending"}.`,
+      karmaAmount: -(item.karmaValue ?? item.karma_value ?? 0),
+      createdAt: item.updatedAt || item.updated_at || new Date().toISOString(),
+    });
+  });
+
+  // Sort newest first
+  return activities.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+};
+
+const normalizeActivityEntry = (activity) => {
+  const type =
+    activity?.type ??
+    activity?.activityType ??
+    activity?.activity_type ??
+    activity?.eventType ??
+    "ESCROW";
+
+  const createdAt =
+    activity?.createdAt ??
+    activity?.created_at ??
+    activity?.timestamp ??
+    new Date().toISOString();
+
+  const karmaAmount = toNumber(
+    activity?.karmaAmount ??
+      activity?.karma_amount ??
+      activity?.amount ??
+      activity?.value,
+    0
+  );
+
+  return {
+    id:
+      activity?.id ??
+      activity?._id ??
+      activity?.activityId ??
+      activity?.activity_id ??
+      `${type}-${createdAt}`,
+    type,
+    description:
+      activity?.description ??
+      activity?.details ??
+      activity?.event ??
+      activity?.message ??
+      "Escrow activity",
+    karmaAmount,
+    createdAt,
+  };
+};
+
 export default function Profile({ activeOrder, onOpenOrderTracking }) {
   const { user, refreshProfile } = useAuth();
 
@@ -128,9 +214,10 @@ export default function Profile({ activeOrder, onOpenOrderTracking }) {
     setError("");
 
     try {
-      const [profileRes, itemsRes] = await Promise.allSettled([
+      const [profileRes, itemsRes, activityRes] = await Promise.allSettled([
         api.get("/profile/me"),
         api.get("/items"),
+        api.get("/escrow/activities"),
       ]);
 
       let resolvedProfile = null;
@@ -167,12 +254,13 @@ export default function Profile({ activeOrder, onOpenOrderTracking }) {
         const identitySet = buildIdentitySet(resolvedProfile);
         setMyItems(items.filter((item) => isMyItem(item, identitySet)));
         setClaimedItems(items.filter((item) => isClaimedByMe(item, identitySet)));
+        setTransactions(buildActivityEntries(items.filter((item) => isMyItem(item, identitySet)), items.filter((item) => isClaimedByMe(item, identitySet))));
       } else {
         setMyItems([]);
         setClaimedItems([]);
+        setTransactions([]);
       }
 
-      setTransactions([]);
       setDailyBonusState(getDailyLoginBonusState(user?.id));
     } catch (err) {
       console.error("Error fetching profile data:", err);
